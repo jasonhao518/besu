@@ -610,7 +610,7 @@ public class PeerDiscoveryController {
     // Creating packets is quite expensive because they have to be cryptographically signed
     // So ensure the work is done on a worker thread to avoid blocking the vertx event thread.
     workerExecutor
-        .execute(() -> Packet.create(type, data, nodeKey))
+        .execute(() -> Packet.create(type, data, nodeKey,localPeer.getEndpoint().getHost()))
         .thenAccept(handler)
         .exceptionally(
             error -> {

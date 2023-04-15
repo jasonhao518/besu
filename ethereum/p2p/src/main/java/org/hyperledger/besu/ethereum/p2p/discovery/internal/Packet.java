@@ -18,6 +18,8 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static org.hyperledger.besu.crypto.Hash.keccak256;
 import static org.hyperledger.besu.util.Preconditions.checkGuard;
 
+import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.lang3.StringUtils;
 import org.hyperledger.besu.crypto.NodeKey;
 import org.hyperledger.besu.crypto.SECPPublicKey;
 import org.hyperledger.besu.crypto.SECPSignature;
@@ -29,6 +31,7 @@ import org.hyperledger.besu.ethereum.rlp.RLP;
 import org.hyperledger.besu.ethereum.rlp.RLPException;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Optional;
 
@@ -38,26 +41,29 @@ import io.vertx.core.buffer.Buffer;
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.MutableBytes;
 import org.apache.tuweni.units.bigints.UInt256;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Packet {
-
-  private static final int PACKET_TYPE_INDEX = 97;
-  private static final int PACKET_DATA_INDEX = 98;
-  private static final int SIGNATURE_INDEX = 32;
+  private static final Logger LOG = LoggerFactory.getLogger(Packet.class);
+  private static final int PACKET_TYPE_INDEX = 112;
+  private static final int PACKET_DATA_INDEX = 113;
+  private static final int SIGNATURE_INDEX = 47;
+  private static final int HOST_INDEX = 15;
   private static final Supplier<SignatureAlgorithm> SIGNATURE_ALGORITHM =
       Suppliers.memoize(SignatureAlgorithmFactory::getInstance);
 
   private final PacketType type;
   private final PacketData data;
-
+  private final String host;
   private final Bytes hash;
   private final SECPSignature signature;
   private final SECPPublicKey publicKey;
 
-  private Packet(final PacketType type, final PacketData data, final NodeKey nodeKey) {
+  private Packet(final PacketType type, final PacketData data, final NodeKey nodeKey, final String host) {
     this.type = type;
     this.data = data;
-
+    this.host = host;
     final Bytes typeBytes = Bytes.of(this.type.getValue());
     final Bytes dataBytes = RLP.encode(this.data::writeTo);
 
@@ -67,12 +73,13 @@ public class Packet {
   }
 
   private Packet(final PacketType packetType, final PacketData packetData, final Bytes message) {
-    final Bytes hash = message.slice(0, SIGNATURE_INDEX);
+    final Bytes hostBytes = message.slice(0,HOST_INDEX);
+    final Bytes hash = message.slice(HOST_INDEX, SIGNATURE_INDEX - HOST_INDEX);
     final Bytes encodedSignature =
         message.slice(SIGNATURE_INDEX, PACKET_TYPE_INDEX - SIGNATURE_INDEX);
     final Bytes signedPayload =
         message.slice(PACKET_TYPE_INDEX, message.size() - PACKET_TYPE_INDEX);
-
+    host = new String(hostBytes.toArray(), StandardCharsets.UTF_8).trim();
     // Perform hash integrity check.
     final Bytes rest = message.slice(SIGNATURE_INDEX, message.size() - SIGNATURE_INDEX);
     if (!Arrays.equals(keccak256(rest).toArray(), hash.toArray())) {
@@ -95,8 +102,8 @@ public class Packet {
   }
 
   public static Packet create(
-      final PacketType packetType, final PacketData packetData, final NodeKey nodeKey) {
-    return new Packet(packetType, packetData, nodeKey);
+      final PacketType packetType, final PacketData packetData, final NodeKey nodeKey, final String host) {
+    return new Packet(packetType, packetData, nodeKey, host);
   }
 
   public static Packet decode(final Buffer message) {
@@ -136,9 +143,11 @@ public class Packet {
     final Bytes encodedSignature = encodeSignature(signature);
     final BytesValueRLPOutput encodedData = new BytesValueRLPOutput();
     data.writeTo(encodedData);
+    final Bytes hostBytes = Bytes.wrap(StringUtils.rightPad(host,15).getBytes(StandardCharsets.UTF_8));
 
     final Buffer buffer =
-        Buffer.buffer(hash.size() + encodedSignature.size() + 1 + encodedData.encodedSize());
+        Buffer.buffer(hostBytes.size() + hash.size() + encodedSignature.size() + 1 + encodedData.encodedSize());
+    hostBytes.appendTo(buffer);
     hash.appendTo(buffer);
     encodedSignature.appendTo(buffer);
     buffer.appendByte(type.getValue());
@@ -175,6 +184,10 @@ public class Packet {
     return type;
   }
 
+  public String getHost() {
+    return host;
+  }
+
   public Bytes getHash() {
     return hash;
   }
@@ -184,6 +197,8 @@ public class Packet {
     return "Packet{"
         + "type="
         + type
+        + ", host="
+        + host
         + ", data="
         + data
         + ", hash="

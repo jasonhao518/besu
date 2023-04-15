@@ -291,7 +291,7 @@ public class VertxPeerDiscoveryAgent extends PeerDiscoveryAgent {
         event -> {
           if (event.succeeded()) {
             // Acquire the senders coordinates to build a Peer representation from them.
-            final String host = datagram.sender().host();
+            final String host = event.result().getHost();
             final int port = datagram.sender().port();
             final Endpoint endpoint = new Endpoint(host, port, Optional.empty());
             handleIncomingPacket(endpoint, event.result());
