@@ -45,7 +45,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class Packet {
-  private static final Logger LOG = LoggerFactory.getLogger(Packet.class);
   private static final int PACKET_TYPE_INDEX = 112;
   private static final int PACKET_DATA_INDEX = 113;
   private static final int SIGNATURE_INDEX = 47;
